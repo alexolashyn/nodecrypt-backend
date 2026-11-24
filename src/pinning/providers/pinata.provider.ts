@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { openAsBlob } from 'node:fs';
+import { postMultipartFile } from './multipart-upload';
 import { PinProvider, ProviderHttpError, UploadedPin } from './pin-provider';
 
 const UPLOAD_URL = 'https://uploads.pinata.cloud/v3/files';
@@ -21,21 +21,16 @@ export class PinataProvider implements PinProvider {
     cid: string,
     signal: AbortSignal,
   ): Promise<UploadedPin> {
-    const form = new FormData();
-    form.append('file', await openAsBlob(path), cid);
-    form.append('network', 'public');
-    form.append('name', cid);
-
-    const res = await fetch(UPLOAD_URL, {
-      method: 'POST',
-      headers: { Authorization: this.authHeader },
-      body: form,
+    const res = await postMultipartFile(
+      UPLOAD_URL,
+      { Authorization: this.authHeader },
+      { network: 'public', name: cid },
+      { field: 'file', path, filename: cid },
       signal,
-    });
-    if (!res.ok)
-      throw new ProviderHttpError(this.name, res.status, await res.text());
+    );
+    if (!res.ok) throw new ProviderHttpError(this.name, res.status, res.text);
 
-    const { data } = (await res.json()) as {
+    const { data } = JSON.parse(res.text) as {
       data: { id: string; cid: string };
     };
     return { cid: data.cid, ref: data.id, state: 'pinned' };

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { openAsBlob } from 'node:fs';
 import { CID_PROFILE } from 'src/cid/cid.service';
+import { postMultipartFile } from './multipart-upload';
 import { PinProvider, ProviderHttpError, UploadedPin } from './pin-provider';
 
 const RPC_URL = 'https://rpc.filebase.io/api/v0';
@@ -27,19 +27,16 @@ export class FilebaseProvider implements PinProvider {
       chunker: `size-${CID_PROFILE.chunkSize}`,
       pin: 'true',
     });
-    const form = new FormData();
-    form.append('file', await openAsBlob(path), cid);
-
-    const res = await fetch(`${RPC_URL}/add?${params}`, {
-      method: 'POST',
-      headers: { Authorization: this.authHeader },
-      body: form,
+    const res = await postMultipartFile(
+      `${RPC_URL}/add?${params}`,
+      { Authorization: this.authHeader },
+      {},
+      { field: 'file', path, filename: cid },
       signal,
-    });
-    if (!res.ok)
-      throw new ProviderHttpError(this.name, res.status, await res.text());
+    );
+    if (!res.ok) throw new ProviderHttpError(this.name, res.status, res.text);
 
-    const lines = (await res.text()).trim().split('\n');
+    const lines = res.text.trim().split('\n');
     const { Hash } = JSON.parse(lines[lines.length - 1]) as { Hash: string };
     return { cid: Hash, ref: Hash, state: 'pinned' };
   }
